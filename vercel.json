@@ -1,1 +1,7 @@
-
+{
+  "functions": {
+    "pages/api/proxy.js": {
+      "maxDuration": 60
+    }
+  }
+}
