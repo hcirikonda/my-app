@@ -8,6 +8,7 @@ import {
   Download,
   Loader2,
   Search,
+  Trash2,
 } from "lucide-react";
 
 /* -------------------- inline UI primitives -------------------- */
@@ -134,7 +135,6 @@ function extractImportId(details) {
 }
 
 function extractImportLabel(details) {
-  // Prefer job-level label; fall back to import-level label if job-level is missing
   const imp = Array.isArray(details?.imports) && details.imports.length ? details.imports[0] : null;
   return (
     details?.label ?? details?.job_label ?? details?.name ?? details?.title ??
@@ -203,6 +203,7 @@ export default function App() {
   const addLog = (level, step, message, meta = {}) => {
     setLogs((current) => [{ ts: new Date().toISOString(), level, step, message, ...meta }, ...current]);
   };
+  const clearLogs = () => setLogs([]);
 
   const computedBaseUrl = useMemo(() => buildBaseUrl(portalName, environment), [portalName, environment]);
   const phase1Ready = portalName.trim() && fromDate && toDate && bearerToken.trim() && computedBaseUrl;
@@ -210,7 +211,6 @@ export default function App() {
   const fromDateAge = useMemo(() => daysSince(fromDate), [fromDate]);
   const showRetentionBanner = fromDateAge != null && fromDateAge > RETENTION_DAYS;
 
-  // Compact table view: only show metric columns once at least one row is expanded
   const anyRowExpanded = useMemo(() => Object.values(jobState).some((s) => s?.open), [jobState]);
 
   async function throttleGate(step) {
@@ -394,8 +394,8 @@ export default function App() {
       const bodyStr = error.body ? (typeof error.body === "string" ? error.body : JSON.stringify(error.body)) : "";
       if (error.status === 429) {
         msg = "429 Too Many Requests — increase the throttle delay.";
-      } else if (error.status === 404 || error.status === 410) {
-        msg = `Report not available (${error.status}). Cornerstone only retains CSV reports for ${RETENTION_DAYS} days — this import has expired, so the report no longer exists on the server.`;
+      } else if (error.status === 404 || /not\s*found|expired|no\s*report/i.test(bodyStr)) {
+        msg = `Report not available. Cornerstone Bulk API only retains CSV reports for ${RETENTION_DAYS} days — this job is older than that, so the report no longer exists on the server.`;
       } else {
         msg = error.message;
         if (bodyStr) msg += ` — upstream: ${bodyStr.slice(0, 400)}`;
@@ -409,7 +409,6 @@ export default function App() {
   const th = { padding: "10px 12px", textAlign: "left", fontSize: 11, textTransform: "uppercase", color: "#64748b", letterSpacing: 0.5, background: "#f1f5f9", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" };
   const td = { padding: "12px", borderBottom: "1px solid #e2e8f0", fontSize: 14, verticalAlign: "middle" };
 
-  // Total column count depends on whether ANY row is expanded
   const totalCols = anyRowExpanded ? 8 : 3;
 
   return (
@@ -506,7 +505,7 @@ export default function App() {
               </Button>
               <span style={{ fontSize: 12, color: "#64748b" }}>
                 {anyRowExpanded
-                  ? "Full details visible. Collapse rows to return to the compact list view."
+                  ? "Full details visible. Click a row again to collapse it."
                   : "Compact view — click any row to expand and load its import details."}
               </span>
             </div>
@@ -561,7 +560,6 @@ export default function App() {
                                 </div>
                               </td>
 
-                              {/* Metric columns only render when compact view is off */}
                               {anyRowExpanded && (
                                 <>
                                   <td style={td}>
@@ -579,6 +577,7 @@ export default function App() {
                                 </>
                               )}
 
+                              {/* Action column: only shows the CSV button when an import is loaded. Otherwise blank — the row itself is clickable. */}
                               <td style={{ ...td, textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
                                 {isOpen && imp ? (
                                   <Button
@@ -590,20 +589,11 @@ export default function App() {
                                     {state.downloading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                                     {stale ? "CSV (expired?)" : "CSV"}
                                   </Button>
-                                ) : (
-                                  <Button
-                                    variant="outline"
-                                    onClick={(e) => { e.stopPropagation(); toggleJob(job); }}
-                                    title={isOpen ? "Collapse" : "Expand to load details"}
-                                  >
-                                    {isOpen ? <ChevronDown className="mr-2 h-4 w-4" /> : <ChevronRight className="mr-2 h-4 w-4" />}
-                                    {isOpen ? "Collapse" : "Expand"}
-                                  </Button>
-                                )}
+                                ) : null}
                               </td>
                             </tr>
 
-                            {/* Row 2: expanded details — shows Label + Import ID prominently */}
+                            {/* Row 2: expanded details */}
                             {isOpen && (
                               <tr>
                                 <td style={{ ...td, borderBottom: "1px solid #e2e8f0" }}></td>
@@ -669,7 +659,13 @@ export default function App() {
           <CardContent className="p-5">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">API Response Log</h2>
-              <Badge>{logs.length} event(s)</Badge>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <Badge>{logs.length} event(s)</Badge>
+                <Button variant="outline" onClick={clearLogs} disabled={logs.length === 0} title="Clear all log events">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Clear log
+                </Button>
+              </div>
             </div>
             <div style={{ maxHeight: 384, overflowY: "auto", borderRadius: 12, background: "#020617", padding: 16, fontFamily: "ui-monospace, SFMono-Regular, monospace", fontSize: 12, color: "#f1f5f9", display: "flex", flexDirection: "column", gap: 8 }}>
               {logs.length === 0 ? (
